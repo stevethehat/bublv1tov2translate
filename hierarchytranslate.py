@@ -57,6 +57,23 @@ def get_size_and_area(element):
 		"top": top, "left": left, "bottom": top + height, "right": left + width, "width": width, "height": height, "area": area 
 	}
 
+def set_child_positions(element, parent_element):
+	if parent_element != None:
+		element["position"] = {
+			"top": element["positioning"]["top"] - parent_element["positioning"]["top"],
+			"left": element["positioning"]["left"] - parent_element["positioning"]["left"]
+		}
+		element["size"] = {
+			"width": element["positioning"]["width"],
+			"height": element["positioning"]["height"]
+		}
+	
+	for child_element in element["children"]:
+		set_child_positions(child_element, element)
+		
+	element.pop("positioning", 0)
+
+
 def parse_page(page_json):
 	print "in parse page"
 	
@@ -65,14 +82,18 @@ def parse_page(page_json):
 	
 	# calculate element positions and sizes
 	output_elements = []
+	element_number = 1
 	for element in elements:
 		output_elements.append(
 			{
-				"type": element["BubbleControlType"],
+				"type": "BublView",
+				"id": "element%s" % element_number,
+				"cssClass": "box element%s" % element_number,
 				"positioning": get_size_and_area(element),
 				"children": []
 			}
 		)
+		element_number = element_number +1
 
 	# sort elements by size	
 	output_elements = sorted(output_elements, cmp = area_cmp)
@@ -83,12 +104,13 @@ def parse_page(page_json):
 		#print "%s - %s" % (control_type, element["positioning"])
 		add_to_smallest_parent(element, output_elements)		
 
-	pprint.pprint(root)
+	set_child_positions(root, None)
+	return root
 	
 def parse_pages(bubl_json):
 	print "in parse pages"
 	
-	parse_page(bubl_json["Pages"][0])
+	return parse_page(bubl_json["Pages"][0])
 
 def parse(file_name):
 	json_file = open(file_name, "r")
@@ -97,7 +119,38 @@ def parse(file_name):
 	
 	input_bubl_json = json.loads(json_file_contents)
 	
-	parse_pages(input_bubl_json)
+	bubl = {
+		"type": "Application",
+		"id": "BublApp",
+		"children": []		
+	}
+	bubl["children"].append(
+		{
+			"type": "BublView",
+			"size": { "width": 1366, "height": 768 },
+			"position": { "top": "middle", "left": "middle" },
+			"show": True,		
+			"children": [
+				parse_pages(input_bubl_json)
+			]
+		}		
+	)
+	
+	return bubl
 
-parse("../bublexamples/example1.json")
+bubl = parse("../bublexamples/example1.json")
+pprint.pprint(bubl)
+
+demo_filename = "../bubl/www/demo.json"
+
+if os.path.exists(demo_filename):
+	os.remove(demo_filename)
+
+data = json.dumps(bubl, indent=4, separators=(',',':'))
+
+f = open(demo_filename, "w")
+f.write(data)
+f.close()
+
+
 print "done"
