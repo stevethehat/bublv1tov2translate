@@ -45,6 +45,82 @@ class Translate:
 			smallest_parent["children"].append(element)
 		else:
 			print "i guess we are the root!!"
+			
+	def update_text_details(self, span, result):
+		result["text"] = "%s<p>%s</p>" % (result["text"], span["Text"])
+		
+		if "ForeColor" in span:
+			result["css"]["color"] = self.fix_colour_RGB(span["ForeColor"])
+	
+		if "FontFamily" in span:
+			result["css"]["font-family"] = span["FontFamily"]
+			
+		if "FontSize" in span:
+			result["css"]["font-size"] = "%spx" % span["FontSize"]
+
+	
+	def get_text_details(self, element):
+		result = {
+			"text": "",
+			"css": {} 
+		}
+		xaml_text = element["XamlText"]
+		section = xaml_text["Section"]
+		
+		# look for span..
+		if "Span" in section:
+			span = section["Span"]
+			self.update_text_details(span, result)
+		else:
+			paragraph = section["Paragraph"]
+			
+			if type(paragraph) == dict:
+				if "Span" in paragraph:
+					span = paragraph["Span"]
+					if "Text" in span:
+						self.update_text_details(span, result)
+			else:
+				result["text"] = ""
+				for paragraph_bit in paragraph:
+					if "Span" in paragraph_bit:
+						span = paragraph_bit["Span"]
+						self.update_text_details(span, result)
+				#text = "process list %s" % element["Title"]
+				
+	
+		#print "\n\n\nget_text result!!! details %s " % result
+		return result	
+			
+	def get_color(self):
+		color = "red"
+		
+		return color
+		
+	def setup_control(self, element):
+		old_type = element["data"]["BubbleControlType"]
+		
+		element["label"] = old_type
+		element["bgColour"] = self.get_color()
+		if old_type == "BubbleText":
+			element["type"] = "ContentEditable"
+			#output_element["label"] = 'text'
+			try:
+				element["label"] = self.get_text_details(element["data"])["text"]
+			except:
+				element["label"] = 'text'
+		"""
+		if old_type == "BubbleImage":
+			output_element["type"] = "BublImage"
+			output_element["content"] = {
+				"url": element["AssetUrl"]
+			}
+		if old_type == "BubbleVideo":
+			output_element["type"] = "BublVideo"
+			output_element["content"] = {
+				"url": element["AssetUrl"]
+			}
+		return output_element
+		"""	
 
 	def get_size_and_area(self, element):
 		top = self.get_number_setting(element, "Top", 0)
@@ -71,8 +147,10 @@ class Translate:
 	def set_basic_stylings(self, input_element, output_element, output_element_css):
 		# BubbleBackgroundColor
 		output_element_css["background-color"] = self.fix_colour_RGB(input_element["BubbleBackgroundColor"])
+		
+		
 
-	def set_child_positions(self, element, parent_element):
+	def setup_children(self, element, parent_element):
 		if parent_element != None:
 			element["position"] = {
 				"top": element["positioning"]["top"] - parent_element["positioning"]["top"],
@@ -92,9 +170,11 @@ class Translate:
 				"height": element["positioning"]["height"]
 			}
 		for child_element in element["children"]:
-			self.set_child_positions(child_element, element)
+			self.setup_children(child_element, element)
 			
+		self.setup_control(element)
 		element.pop("positioning", 0)
+		element.pop("data", 0)
 
 	input_page_elements = None
 	output_page_elements = None
@@ -117,16 +197,18 @@ class Translate:
 					"id": "%s" % element_id,
 					"cssClass": "box %s" % element_id,
 					"positioning": self.get_size_and_area(element),
-					"children": []
+					"children": [],
+					"oldtype": element["BubbleControlType"],
+					"data": element
 				} 
+			#output_element = self.setup_control(element, output_element)
 			output_element_css = {
-					"class": "box %s" % element_id,
+					"class": "box .%s" % element_id,
 					"styles": {
-						"background-color": "pink"
 					}
 				}
 
-			self.set_basic_stylings(element, output_element, output_element_css)
+			#self.set_basic_stylings(element, output_element, output_element_css)
 			
 			self.output_page_elements.append(output_element)
 			self.bubl_css.append(output_element_css)
@@ -140,7 +222,7 @@ class Translate:
 			print "%s %s" % (element["id"], element["positioning"])
 			self.add_to_smallest_parent(element)		
 	
-		self.set_child_positions(self.output_page_root, None)
+		self.setup_children(self.output_page_root, None)
 		return self.output_page_root
 	
 	def parse_pages(self):
@@ -214,7 +296,7 @@ class Translate:
 
 translate = Translate()
 
-translate.parse("../bublexamples/example2.json")
+translate.parse("../bublexamples/example1.json")
 translate.save_bubl()
 
 print "done"
