@@ -52,11 +52,25 @@ class Translate:
 		width = self.get_number_setting(element, "BubbleWidth", 0)
 		height = self.get_number_setting(element, "BubbleHeight", 0)
 		
+		if top < 0:
+			top = 0
+			
+		if left < 0:
+			left = 0
+		
 		area = height * width
 		
 		return {
 			"top": top, "left": left, "bottom": top + height, "right": left + width, "width": width, "height": height, "area": area 
 		}
+		
+	def fix_colour_RGB(self, hex_rgba):
+		result = "rgba(%s,%s,%s,%s)" % (int("0x%s" % hex_rgba[3:5], 0), int("0x%s" % hex_rgba[5:7], 0), int("0x%s" % hex_rgba[7:9], 0), int("0x%s" % hex_rgba[1:3], 0))
+		return result
+		
+	def set_basic_stylings(self, input_element, output_element, output_element_css):
+		# BubbleBackgroundColor
+		output_element_css["background-color"] = self.fix_colour_RGB(input_element["BubbleBackgroundColor"])
 
 	def set_child_positions(self, element, parent_element):
 		if parent_element != None:
@@ -68,7 +82,15 @@ class Translate:
 				"width": element["positioning"]["width"],
 				"height": element["positioning"]["height"]
 			}
-		
+		else:
+			element["position"] = {
+				"top": element["positioning"]["top"],
+				"left": element["positioning"]["left"]
+			}
+			element["size"] = {
+				"width": element["positioning"]["width"],
+				"height": element["positioning"]["height"]
+			}
 		for child_element in element["children"]:
 			self.set_child_positions(child_element, element)
 			
@@ -87,15 +109,27 @@ class Translate:
 		self.output_page_elements = []
 		element_number = 1
 		for element in self.input_page_elements:
-			self.output_page_elements.append(
-				{
+			title = element["Title"]
+			happy_title = "".join(ch for ch in title if ch.isalnum()) 
+			element_id = "%s-%s" % (happy_title, element_number)
+			output_element = {
 					"type": "BublView",
-					"id": "element%s" % element_number,
-					"cssClass": "box element%s" % element_number,
+					"id": "%s" % element_id,
+					"cssClass": "box %s" % element_id,
 					"positioning": self.get_size_and_area(element),
 					"children": []
+				} 
+			output_element_css = {
+					"class": "box %s" % element_id,
+					"styles": {
+						"background-color": "pink"
+					}
 				}
-			)
+
+			self.set_basic_stylings(element, output_element, output_element_css)
+			
+			self.output_page_elements.append(output_element)
+			self.bubl_css.append(output_element_css)
 			element_number = element_number +1
 	
 		# sort elements by size	
@@ -103,6 +137,7 @@ class Translate:
 	
 		self.output_page_root = self.output_page_elements[0]
 		for element in self.output_page_elements:
+			print "%s %s" % (element["id"], element["positioning"])
 			self.add_to_smallest_parent(element)		
 	
 		self.set_child_positions(self.output_page_root, None)
@@ -115,6 +150,7 @@ class Translate:
 
 	bubl = None
 	input_bubl_json = None
+	bubl_css = []
 	
 	def parse(self, file_name):
 		json_file = open(file_name, "r")
@@ -148,23 +184,37 @@ class Translate:
 		self.save_bubl_css()
 		
 	def save_bubl_definition(self):
-		demo_filename = "../bubl/www/demo.json"
+		definition_filename = "../bubl/www/demo.json"
 		
-		if os.path.exists(demo_filename):
-			os.remove(demo_filename)
+		if os.path.exists(definition_filename):
+			os.remove(definition_filename)
 		
 		data = json.dumps(self.bubl, indent=4, separators=(',',':'))
 		
-		f = open(demo_filename, "w")
+		f = open(definition_filename, "w")
 		f.write(data)
 		f.close()
 		
 	def save_bubl_css(self):
-		pass
+		definition_filename = "../bubl/www/app/css/demo_bubl.css"
+		
+		if os.path.exists(definition_filename):
+			os.remove(definition_filename)
+		
+		f = open(definition_filename, "w")
+		f.write("/* demo bubl css */")
+		for css_class in self.bubl_css:
+			f.write("\n.%s{" % css_class["class"])
+			
+			for style in css_class["styles"]:
+				f.write("\n\t%s:%s;" % (style, css_class["styles"][style]))
+			
+			f.write("\n}\n")
+		f.close()
 
 translate = Translate()
 
-translate.parse("../bublexamples/example1.json")
+translate.parse("../bublexamples/example2.json")
 translate.save_bubl()
 
 print "done"
