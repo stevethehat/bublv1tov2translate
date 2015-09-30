@@ -1,4 +1,4 @@
-import io, json, math, pprint, copy, os
+import io, json, math, pprint, copy, os, sys
 
 def area_cmp(item1, item2):
 	item1_positioning = item1["positioning"]
@@ -117,10 +117,36 @@ class Translate:
 			
 		if "BubbleOpacity" in element["data"]:
 			element["opacity"] = float(element["data"]["BubbleOpacity"]) / 100
-					
+		
+	asset_index = 0
+	def download_asset(self, url):
+		print "downloading '%s" % url
+		self.asset_index = self.asset_index +1
+		file_name = "assets/%s_asset%s.png" % (self.file_name, self.asset_index) 
+			
+		"""
+		import urllib2
+		try:
+			print "downloading '%s" % url
+			self.asset_index = self.asset_index +1 
+			
+			asset = urllib2.urlopen(url)
+			asset = open("assets/%s_asset%s.png" % (self.file_name, self.asset_index), "wb")
+			asset.write(asset.read())
+			asset.close()		
+		except:
+			pass
+		"""
+		import urllib
+		asset = urllib.URLopener()
+		asset.retrieve(url, file_name)
+		
+	id_count = 0						
 	def setup_control(self, element):
 		element.pop("positioning", 0)
 		old_type = element["data"]["BubbleControlType"]
+		element["id"] = "id%s" % self.id_count
+		self.id_count += 1
 					 
 		style_element = element
 		
@@ -130,12 +156,29 @@ class Translate:
 		if old_type == "BubbleText":
 			element["type"] = "ContentEditable"
 			element["cssClass"] = "%s text" % element["cssClass"]
+
+			"""
+			if "AssetUrl" in element["data"]:
+				element["css"] = {
+					"background-image": "url(%s)" % element["data"]["AssetUrl"]
+				}
+			"""
+			
 			if int(element["size"]["width"] == 196) and int(element["size"]["height"]) == 95:
 				print ""
 				print "we have a ms-menuControl"
 				print ""
+				
+				#self.download_asset(element["data"]["AssetUrl"])
+				
+				element["type"] = "msMenuBox"
 				element["cssClass"] = "%s ms-menuControl" % element["cssClass"]
-						
+				
+				print "top %s left %s" % (element["data"]["BGImagePositionLeft"], element["data"]["BGImagePositionLeft"])
+				print "%s x %s" % (element["data"]["BGImagePositionWidth"], element["data"]["BGImagePositionHeight"])
+
+			#element["type"] = "msMenuBox"
+			#element["cssClass"] = "%s ms-menuControl" % element["cssClass"]
 			#output_element["label"] = 'text'
 			try:
 				element["label"] = self.get_text_details(element["data"])["text"]
@@ -149,10 +192,8 @@ class Translate:
 				"url": element["data"]["AssetUrl"]
 			}
 		else:
-			if "AssetUrl" in element["data"]:
-				element["css"] = {
-					"background-image": "url(%s)" % element["data"]["AssetUrl"]
-				}
+			pass
+
 		if old_type == "BubbleVideo":
 			element["type"] = "BublVideo"
 			element["content"] = {
@@ -165,10 +206,10 @@ class Translate:
 			
 			import copy
 			new_control = copy.deepcopy(element)
-			new_control["type"] = "Control"
+			new_control["type"] = "BublControl"
 			new_control.pop("children", 0)
 			new_control.pop("position", 0)
-			new_control.pop("size", 0)
+			#new_control.pop("size", 0)
 			new_control["auto added control"] = True
 			
 			#pprint.pprint(new_control["data"])
@@ -176,9 +217,10 @@ class Translate:
 			self.set_bgcolor(new_control)
 			new_control.pop("data", 0)
 			
-			print "adding default control %s " % new_control			
+			#print "adding default control %s " % new_control			
 			element["children"] = [new_control] + element["children"]
 			#print "added %s" % element["children"][0]
+			
 		else:
 			self.set_bgcolor(element)
 			
@@ -261,8 +303,12 @@ class Translate:
 		self.output_page_elements = []
 		element_number = 1
 		for element in self.input_page_elements:
+			if self.force_visibility:
+				element["BubbleVisibility"] = True
 			if element["BubbleVisibility"] == True:
 				title = element["Title"]
+				print "processing %s - %s" % (element["BubbleControlType"], element["Title"])
+				
 				happy_title = "".join(ch for ch in title if ch.isalnum()) 
 				element_id = "%s-%s" % (happy_title, element_number)
 				print happy_title
@@ -287,50 +333,101 @@ class Translate:
 				self.output_page_elements.append(output_element)
 				self.bubl_css.append(output_element_css)
 				element_number = element_number +1
-	
+			else:
+				print "discarded %s - %s" % (element["BubbleControlType"], element["Title"])
 		# sort elements by size	
 		self.output_page_elements = sorted(self.output_page_elements, cmp = area_cmp)
 	
 		self.output_page_root = self.output_page_elements[0]
 		for element in self.output_page_elements:
-			#print "%s" % (element["positioning"])
+			print "%s" % (element["positioning"])
 			self.add_to_smallest_parent(element)		
 	
 		self.setup_children(self.output_page_root, None)
 		return self.output_page_root
 	
 	def parse_pages(self):
-		print "in parse pages"
+		print "in parse pages - %s of %s" % (self.page, len(self.input_bubl_json["Pages"])) 
 	
-		return self.parse_page(self.input_bubl_json["Pages"][0])
+		return self.parse_page(self.input_bubl_json["Pages"][int(self.page) -1])
 
 	bubl = None
 	input_bubl_json = None
 	bubl_css = []
 	
-	def parse(self, file_name):
-		json_file = open(file_name, "r")
+	current_search_page = 0
+	found_page = None
+	def find_page(self, search):
+		print "find page containing '%s'" % search
+		result = False
+		for page in self.input_bubl_json["Pages"]:
+			self.search_element(page, search)
+			self.current_search_page =+ 1
+		print type(self.found_page)
+		print "on page %s" % (self.found_page +1)
+		
+		self.page = self.found_page +1
+		
+	def search_element(self, json, search):
+		if isinstance(json, dict):
+			for element in json:
+				self.search_element(json[element], search)
+		else:
+			if isinstance(json, list):
+				for element in json:
+					self.search_element(element, search)
+			else:
+				if json == search:
+					print "found '%s' = '%s on %s" % (json, search, self.current_search_page)
+					self.found_page = self.current_search_page
+				
+		"""
+		for element in json:
+			print "element %s" % type(element)
+			value = element
+			if value == search:
+				print "FOUND"
+			else:
+				if isinstance(value, dict) or isinstance(value, list):
+					self.search_element(json[element], search)
+		"""
+		 	
+	def parse(self, file_name, page, search):
+		self.file_name = file_name
+					
+		json_file = open("../bublexamples/%s.json" % file_name, "r")
 		json_file_contents = json_file.read()
 		json_file.close()
 		
+		print "parsing '%s'" % file_name
+		
 		self.input_bubl_json = json.loads(json_file_contents)
 		
+		if page == None and not(search == None):
+			self.find_page(search)			
+		else:
+			self.page = page
+
 		self.bubl = {
 			"type": "Application",
 			"id": "BublApp",
 			"children": []		
 		}
-		self.bubl["children"].append(
-			{
-				"type": "BublView",
-				"size": { "width": 1366, "height": 768 },
-				"position": { "top": "middle", "left": "middle" },
-				"show": True,		
-				"children": [
-					self.parse_pages()
-				]
-			}		
-		)
+		root = 	{
+			"type": "BublView",
+			"id": "rootView",
+			"size": { "width": 1366, "height": 768 },
+			"position": { "top": "middle", "left": "middle" },
+			"show": True,		
+			"children": [
+				self.parse_pages()
+			]
+		}	
+		root["data"] = self.input_bubl_json
+		self.set_bgcolor(root)	
+		root.pop("data", 0)
+
+		self.bubl["children"].append(root)
 		
 		return self.bubl
 		
@@ -354,7 +451,11 @@ class Translate:
 		f.close()
 		
 		print "unique sizes"
-		pprint.pprint(self.unique_sizes)
+		#pprint.pprint(self.unique_sizes)
+		
+		print "no pages = %s" % len(self.input_bubl_json["Pages"])
+		print "processed '%s'" % self.file_name
+		print "page %s" % self.page
 		
 		
 	def save_bubl_css(self):
@@ -376,7 +477,21 @@ class Translate:
 
 translate = Translate()
 
-translate.parse("../bublexamples/example2.json")
+example_number = 1
+page = 1
+search = None
+
+if len(sys.argv) >= 2:
+	example_number = sys.argv[1]
+if len(sys.argv) == 3:
+	if isinstance(sys.argv[2], int):
+		page = sys.argv[2]
+	else:
+		page = None
+		search = sys.argv[2]
+	
+translate.force_visibility = False
+translate.parse("example%s" % example_number, page, search)
 translate.save_bubl()
 
 print "done"
