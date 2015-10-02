@@ -247,7 +247,7 @@ class Translate:
 		area = height * width
 		
 		return {
-			"top": top, "left": left, "bottom": top + height, "right": left + width, "width": width, "height": height, "area": area 
+			"top": top, "left": left, "bottom": top + height, "right": left + width, "width": width, "height": height, "area": area, "visibility": element["BubbleVisibility"], "guid": element["BubbleId"]  
 		}
 		
 	def fix_colour_RGB(self, hex_rgba):
@@ -298,14 +298,34 @@ class Translate:
 		
 		# get page elements 
 		self.input_page_elements = page_json["ObjectDataModels"]
+		self.input_page_elements.append(
+			{
+				"BubbleHeight":768.0,
+				"BubbleWidth":1366.0,
+				"Top": 0,
+				"Left": 0,
+				"BubbleControlType": "BubbleRectangle",
+				"BubbleVisibility": True,
+				"Title": "Fake Bubble Root",
+				"BubbleId": 1,
+				"BubbleBackgroundColor": page_json["BubbleBackgroundColor"]
+			}
+		)
 		
 		# calculate element positions and sizes
 		self.output_page_elements = []
 		element_number = 1
 		for element in self.input_page_elements:
+			do_it = element["BubbleVisibility"]
+			
 			if self.force_visibility:
-				element["BubbleVisibility"] = True
-			if element["BubbleVisibility"] == True:
+				do_it = True
+			"""	
+			if element["BubbleId"] == "6e0d7fb7-9b68-43d5-8b2e-ba58ae91709d":
+				do_it = True
+			"""
+				
+			if do_it == True:
 				title = element["Title"]
 				print "processing %s - %s" % (element["BubbleControlType"], element["Title"])
 				
@@ -355,32 +375,61 @@ class Translate:
 	input_bubl_json = None
 	bubl_css = []
 	
+	def flatten_pages(self):
+		pass
+							   
+	flat_pages = []
+	def find_pages(self, element):
+		if isinstance(element, dict):
+			for k in element:
+				if k == "Pages":
+					pages = element[k]
+					for page in pages:
+						print "found page"
+						self.flat_pages.append(page)
+						self.find_pages(page)
+				
+	
 	current_search_page = 0
 	found_page = None
 	def find_page(self, search):
 		print "find page containing '%s'" % search
 		result = False
 		for page in self.input_bubl_json["Pages"]:
+			print "search page %s" % self.current_search_page
 			self.search_element(page, search)
-			self.current_search_page =+ 1
+			self.current_search_page = self.current_search_page + 1
+			print "updating current search page %s" % self.current_search_page
+
 		print type(self.found_page)
 		print "on page %s" % (self.found_page +1)
 		
 		self.page = self.found_page +1
 		
-	def search_element(self, json, search):
-		if isinstance(json, dict):
-			for element in json:
-				self.search_element(json[element], search)
+	def search_element(self, json_element, search):
+		if isinstance(json_element, dict):
+			for element in json_element:
+				self.search_element(json_element[element], search)
 		else:
-			if isinstance(json, list):
-				for element in json:
+			if isinstance(json_element, list):
+				for element in json_element:
 					self.search_element(element, search)
 			else:
-				if json == search:
-					print "found '%s' = '%s on %s" % (json, search, self.current_search_page)
-					self.found_page = self.current_search_page
-				
+				try:
+					if json_element.find(search) != -1:
+						print "found '%s' = '%s on %s" % (json_element, search, self.current_search_page)
+						self.found_page = self.current_search_page
+						#pprint.pprint(self.input_bubl_json["Pages"][self.found_page]["Actions"])
+						
+						try:
+							page = open("found_page.json", "w")
+							page.write(json.dumps(self.input_bubl_json["Pages"][self.found_page], indent=4, separators=(',',':')))
+							page.close()
+							print "WRITTEN PAGE"
+						except Exception, e:
+							print e.message
+				except Exception, e:
+					pass
 		"""
 		for element in json:
 			print "element %s" % type(element)
@@ -402,6 +451,9 @@ class Translate:
 		print "parsing '%s'" % file_name
 		
 		self.input_bubl_json = json.loads(json_file_contents)
+		
+		self.find_pages(self.input_bubl_json)
+		self.input_bubl_json["Pages"] = self.flat_pages
 		
 		if page == None and not(search == None):
 			self.find_page(search)			
